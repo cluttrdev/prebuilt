@@ -32,6 +32,9 @@ type Binary struct {
 
 // LoadConfig reads the applications configuration from the given reader into `cfg`.
 func LoadConfig(r io.Reader, cfg *Config) error {
+	if r == nil {
+		return nil
+	}
 	return yaml.NewDecoder(r).Decode(cfg)
 }
 
