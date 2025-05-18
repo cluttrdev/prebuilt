@@ -72,7 +72,8 @@ func FindLatestVersion(versions []string, spec string, prefix string) (string, e
 	for _, raw := range versions {
 		v, err := version.NewVersion(strings.TrimPrefix(raw, prefix))
 		if err != nil {
-			return "", fmt.Errorf("parse version: %w", err)
+			// return "", fmt.Errorf("parse version: %w", err)
+			continue
 		}
 		if constraint != nil && !constraint.Check(v) {
 			continue
