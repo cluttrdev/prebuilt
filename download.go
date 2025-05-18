@@ -39,8 +39,3 @@ func Download(url string, dir string) (string, error) {
 
 	return file.Name(), err
 }
-
-func urlPath(url string) string {
-	u, _ := _url.Parse(url)
-	return u.Path
-}
