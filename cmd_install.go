@@ -43,10 +43,10 @@ func (c *installCmd) Exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	var binaries []Binary
+	var binaries []BinarySpec
 	if len(args) > 0 {
 		for _, name := range args {
-			index := slices.IndexFunc(cfg.Binaries, func(b Binary) bool {
+			index := slices.IndexFunc(cfg.Binaries, func(b BinarySpec) bool {
 				return b.Name == name
 			})
 			if index == -1 {
@@ -68,30 +68,26 @@ func (c *installCmd) Exec(ctx context.Context, args []string) error {
 		}
 	}()
 
-	for _, bin := range binaries {
-		url, err := renderTemplate(bin.DownloadURL, bin)
+	for _, spec := range binaries {
+		bin, err := resolveBinarySpec(spec)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("downloading %s ...\n", url)
-		path, err := Download(url, dir)
+		fmt.Printf("downloading %s ...\n", bin.DownloadURL)
+		path, err := Download(bin.DownloadURL, dir)
 		if err != nil {
 			return err
 		}
 
 		if bin.ExtractPath != "" {
-			extractPath, err := renderTemplate(bin.ExtractPath, bin)
-			if err != nil {
-				return err
-			}
-			path, err = Extract(path, extractPath)
+			path, err = Extract(path, bin.ExtractPath)
 			if err != nil {
 				return err
 			}
 		}
 
-		out := filepath.Join(expandPath(cfg.Global.InstallDir), getBinName(bin))
+		out := filepath.Join(expandPath(cfg.Global.InstallDir), bin.Name)
 		if err := Install(path, out); err != nil {
 			return err
 		}
@@ -105,16 +101,4 @@ func expandPath(path string) string {
 		path = filepath.Join("${HOME}", path[1:])
 	}
 	return os.ExpandEnv(path)
-}
-
-func getBinName(bin Binary) string {
-	switch {
-	case bin.BinName != "":
-		return bin.BinName
-	case bin.Name != "":
-		return bin.Name
-	case bin.ExtractPath != "":
-		return filepath.Base(bin.ExtractPath)
-	}
-	return filepath.Base(urlPath(bin.DownloadURL))
 }
