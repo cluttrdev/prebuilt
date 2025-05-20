@@ -7,6 +7,8 @@ import (
 	_url "net/url"
 	"os"
 	"path/filepath"
+
+	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
 // Download retrieves a binary asset from the given url and saves it in the
@@ -31,6 +33,13 @@ func Download(url string, dir string) (string, error) {
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", metaerr.WithMetadata(
+			fmt.Errorf("%d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			"body", string(body),
+		)
+	}
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {

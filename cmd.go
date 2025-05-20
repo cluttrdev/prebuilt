@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 
 	"github.com/cluttrdev/cli"
@@ -49,14 +51,67 @@ func configure() *cli.Command {
 	}
 }
 
+func initLogging(w io.Writer, level string, format string) {
+	if w == nil {
+		w = os.Stderr
+	}
+
+	var lvl slog.Level
+	switch level {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "info":
+		lvl = slog.LevelInfo
+	case "warn":
+		lvl = slog.LevelWarn
+	case "error":
+		lvl = slog.LevelError
+	default:
+		lvl = slog.LevelInfo
+	}
+
+	opts := slog.HandlerOptions{
+		Level: lvl,
+	}
+
+	var handler slog.Handler
+	switch format {
+	case "text":
+		handler = slog.NewTextHandler(w, &opts)
+	case "json":
+		handler = slog.NewJSONHandler(w, &opts)
+	default:
+		handler = slog.NewTextHandler(w, &opts)
+	}
+
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+}
+
 type rootCmd struct {
 	ConfigFile string
+
+	logLevel  string
+	logFormat string
+	debug     bool
 }
 
 func (c *rootCmd) RegisterFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.ConfigFile, "config", ".prebuilt.yaml", "The configuration file.")
+
+	fs.StringVar(&c.logLevel, "log-level", "info", "The log level.")
+	fs.StringVar(&c.logFormat, "log-format", "text", "The log format ('text' or 'json').")
+	fs.BoolVar(&c.debug, "debug", false, "Enable debug mode.")
 }
 
 func (c *rootCmd) Exec(ctx context.Context, args []string) error {
 	return flag.ErrHelp
+}
+
+func (c *rootCmd) initLogging() {
+	level := c.logLevel
+	if c.debug {
+		level = "debug"
+	}
+	initLogging(os.Stderr, level, c.logFormat)
 }

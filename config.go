@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/goccy/go-yaml"
+	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
 // Config holds all applications configuration settings.
@@ -147,22 +148,31 @@ func resolveBinarySpec(bin BinarySpec) (binaryData, error) {
 	// Version
 	data.Version, err = ResolveVersion(providerSpec.VersionsURL, providerSpec.VersionsJSONPath, versionSpec.Constraints, versionSpec.Prefix)
 	if err != nil {
-		return data, fmt.Errorf("resolve version: %w", err)
+		return data, metaerr.WithMetadata(
+			fmt.Errorf("resolve version: %w", err),
+			"url", providerSpec.VersionsURL,
+		)
 	}
 
 	// DownloadURL
 	data.DownloadURL, err = renderTemplate(providerSpec.DownloadURL, tplData{Version: data.Version})
 	if err != nil {
-		return data, fmt.Errorf("render download url: %w", err)
+		return data, metaerr.WithMetadata(
+			fmt.Errorf("render download url: %w", err),
+			"template", providerSpec.DownloadURL,
+		)
 	}
 
 	// ExtractPath
 	data.ExtractPath, err = renderTemplate(bin.ExtractPath, tplData{Version: data.Version})
 	if err != nil {
-		return data, fmt.Errorf("render extract path: %w", err)
+		return data, metaerr.WithMetadata(
+			fmt.Errorf("render extract path: %w", err),
+			"template", bin.ExtractPath,
+		)
 	}
 
-	return data, err
+	return data, nil
 }
 
 func getBinName(bin BinarySpec, provider ProviderSpec) string {

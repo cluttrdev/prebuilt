@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cluttrdev/cli"
+	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
 func newInstallCmd() *cli.Command {
@@ -38,6 +39,8 @@ func (c *installCmd) RegisterFlags(fs *flag.FlagSet) {
 }
 
 func (c *installCmd) Exec(ctx context.Context, args []string) error {
+	c.initLogging()
+
 	var cfg Config
 	if err := LoadConfigFile(c.ConfigFile, &cfg); err != nil {
 		return fmt.Errorf("load configuration: %w", err)
@@ -58,39 +61,60 @@ func (c *installCmd) Exec(ctx context.Context, args []string) error {
 		binaries = cfg.Binaries
 	}
 
-	dir, err := os.MkdirTemp("", "prebuilt-*")
+	tmpDir, err := os.MkdirTemp("", "prebuilt-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			slog.Error("failed to remove temporary directory", "dir", dir, "error", err)
+		if err := os.RemoveAll(tmpDir); err != nil {
+			slog.Error("failed to remove temporary directory", "dir", tmpDir, "error", err)
 		}
 	}()
 
+	installDir := expandPath(cfg.Global.InstallDir)
+
+	var failedSpecs []BinarySpec
 	for _, spec := range binaries {
-		bin, err := resolveBinarySpec(spec)
+		fmt.Printf("installing %s ...\n", spec.Name)
+		if err := c.processBinary(spec, tmpDir, installDir); err != nil {
+			slog.With("name", spec.Name, "error", err).
+				With(metaerr.GetMetadata(err)...).
+				Error("failed to install binary")
+			failedSpecs = append(failedSpecs, spec)
+		}
+	}
+	if len(failedSpecs) > 0 {
+		names := make([]string, 0, len(failedSpecs))
+		for _, spec := range failedSpecs {
+			names = append(names, spec.Name)
+		}
+		return fmt.Errorf("installation failed: %v", names)
+	}
+
+	return nil
+}
+
+func (c *installCmd) processBinary(spec BinarySpec, tmpDir string, installDIr string) error {
+	bin, err := resolveBinarySpec(spec)
+	if err != nil {
+		return fmt.Errorf("resolve binary spec: %w", err)
+	}
+
+	path, err := Download(bin.DownloadURL, tmpDir)
+	if err != nil {
+		return fmt.Errorf("download binary asset: %w", err)
+	}
+
+	if bin.ExtractPath != "" {
+		path, err = Extract(path, bin.ExtractPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("extract archived binary: %w", err)
 		}
+	}
 
-		fmt.Printf("downloading %s ...\n", bin.DownloadURL)
-		path, err := Download(bin.DownloadURL, dir)
-		if err != nil {
-			return err
-		}
-
-		if bin.ExtractPath != "" {
-			path, err = Extract(path, bin.ExtractPath)
-			if err != nil {
-				return err
-			}
-		}
-
-		out := filepath.Join(expandPath(cfg.Global.InstallDir), bin.Name)
-		if err := Install(path, out); err != nil {
-			return err
-		}
+	out := filepath.Join(installDIr, bin.Name)
+	if err := Install(path, out); err != nil {
+		return fmt.Errorf("install binary: %w", err)
 	}
 
 	return nil

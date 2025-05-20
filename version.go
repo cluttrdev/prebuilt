@@ -10,6 +10,7 @@ import (
 
 	"github.com/AsaiYusuke/jsonpath"
 	"github.com/hashicorp/go-version"
+	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
 // ResolveVersion returns the latest version that matches the given spec.
@@ -40,15 +41,22 @@ func GetVersions(url string, path string) ([]string, error) {
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, metaerr.WithMetadata(
+			fmt.Errorf("%d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			"body", string(body),
+		)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
 	var src any
 	if err := json.Unmarshal(body, &src); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal response body: %w", err)
 	}
 
 	return retrieveVersions(src, path)
