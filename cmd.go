@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/cluttrdev/cli"
 )
@@ -91,6 +92,7 @@ func initLogging(w io.Writer, level string, format string) {
 type rootCmd struct {
 	ConfigFile string
 
+	logFile   *os.File
 	logLevel  string
 	logFormat string
 	debug     bool
@@ -109,9 +111,29 @@ func (c *rootCmd) Exec(ctx context.Context, args []string) error {
 }
 
 func (c *rootCmd) initLogging() {
+	if stateDir, err := userStateDir(); err == nil {
+		c.logFile, _ = os.OpenFile(filepath.Join(stateDir, "prebuilt.log"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
+	}
+	if c.logFile == nil {
+		c.logFile = os.Stderr
+	}
+
 	level := c.logLevel
 	if c.debug {
 		level = "debug"
 	}
-	initLogging(os.Stderr, level, c.logFormat)
+	initLogging(c.logFile, level, c.logFormat)
+}
+
+func userStateDir() (string, error) {
+	xdgStateHome, ok := os.LookupEnv("XDG_STATE_HOME")
+	if !ok || xdgStateHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		xdgStateHome = filepath.Join(home, ".local", "state")
+	}
+
+	return xdgStateHome, nil
 }

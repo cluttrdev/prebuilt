@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/cluttrdev/cli"
 	"go.cluttr.dev/prebuilt/internal/metaerr"
@@ -38,8 +39,14 @@ func (c *installCmd) RegisterFlags(fs *flag.FlagSet) {
 	c.rootCmd.RegisterFlags(fs)
 }
 
-func (c *installCmd) Exec(ctx context.Context, args []string) error {
+func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	c.initLogging()
+
+	defer func() {
+		if err != nil && c.rootCmd.logFile != os.Stderr {
+			err = fmt.Errorf("%w\nSee %s for details.", err, c.rootCmd.logFile.Name())
+		}
+	}()
 
 	var cfg Config
 	if err := LoadConfigFile(c.ConfigFile, &cfg); err != nil {
@@ -73,16 +80,24 @@ func (c *installCmd) Exec(ctx context.Context, args []string) error {
 
 	installDir := expandPath(cfg.Global.InstallDir)
 
-	var failedSpecs []BinarySpec
+	var (
+		failedSpecs  []BinarySpec
+		wg sync.WaitGroup
+	)
 	for _, spec := range binaries {
-		fmt.Printf("installing %s ...\n", spec.Name)
-		if err := c.processBinary(spec, tmpDir, installDir); err != nil {
-			slog.With("name", spec.Name, "error", err).
-				With(metaerr.GetMetadata(err)...).
-				Error("failed to install binary")
-			failedSpecs = append(failedSpecs, spec)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.processBinary(spec, tmpDir, installDir); err != nil {
+				slog.With("name", spec.Name, "error", err).
+					With(metaerr.GetMetadata(err)...).
+					Error("failed to install binary")
+				failedSpecs = append(failedSpecs, spec)
+				return
+			}
+		}()
 	}
+	wg.Wait()
 	if len(failedSpecs) > 0 {
 		names := make([]string, 0, len(failedSpecs))
 		for _, spec := range failedSpecs {
