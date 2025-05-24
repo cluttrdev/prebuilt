@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/cluttrdev/cli"
+	"github.com/pterm/pterm"
 	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
@@ -80,24 +81,31 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 
 	installDir := expandPath(cfg.Global.InstallDir)
 
+	// set up fancy output
 	var (
+		multiPrinter = pterm.DefaultMultiPrinter
 		failedSpecs  []BinarySpec
 		wg sync.WaitGroup
 	)
+	_, _ = multiPrinter.Start()
 	for _, spec := range binaries {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			spinner, _ := pterm.DefaultSpinner.WithWriter(multiPrinter.NewWriter()).Start("Installing ", spec.Name)
 			if err := c.processBinary(spec, tmpDir, installDir); err != nil {
 				slog.With("name", spec.Name, "error", err).
 					With(metaerr.GetMetadata(err)...).
 					Error("failed to install binary")
 				failedSpecs = append(failedSpecs, spec)
+				spinner.Fail("Failed to install ", spec.Name, ": ", err)
 				return
 			}
+			spinner.Success()
 		}()
 	}
 	wg.Wait()
+	_, _ = multiPrinter.Stop()
 	if len(failedSpecs) > 0 {
 		names := make([]string, 0, len(failedSpecs))
 		for _, spec := range failedSpecs {
