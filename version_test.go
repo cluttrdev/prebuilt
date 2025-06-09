@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +48,7 @@ func TestGetVersions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
-			got, gotErr := GetVersions(tt.url, tt.path)
+			got, gotErr := GetVersions(context.Background(), http.DefaultClient, tt.url, tt.path)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("GetVersions() failed: %v", gotErr)

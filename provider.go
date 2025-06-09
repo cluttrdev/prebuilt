@@ -1,72 +1,90 @@
 package main
 
 import (
-	"fmt"
+	"net/http"
 	"net/url"
-	"path/filepath"
+	"os"
+	"regexp"
 	"strings"
 )
 
-func resolveProviderSpec(p Provider) (ProviderSpec, error) {
-	switch {
-	case p.String != nil:
-		return resolveProviderString(*p.String)
-	case p.Spec != nil:
-		return *p.Spec, nil
-	}
-	return ProviderSpec{}, fmt.Errorf("invalid provider config")
+type ProviderData struct {
+	Name   string
+	Host   string
+	Path   string
+	Values map[string]string
 }
 
-func resolveProviderString(spec string) (ProviderSpec, error) {
-	u, err := url.Parse(spec)
-	if err != nil {
-		return ProviderSpec{}, err
-	}
-
-	if u.Scheme == "github" || u.Host == "github.com" {
-		return resolveGitHubProvider(*u)
-	}
-
-	return ProviderSpec{
-		Name:        u.Hostname(),
-		DownloadURL: spec,
-	}, nil
+type Provider struct {
+	Spec   ProviderSpec
+	Client *http.Client
 }
 
-func resolveGitHubProvider(u url.URL) (ProviderSpec, error) {
-	const (
-		githubVersionsURL      = "https://api.github.com/repos/%s/%s/releases"
-		githubVersionsJSONPath = "$[*].tag_name"
-		githubDownloadURL      = "https://github.com/%s/%s/releases/download/{{ .Version }}/%s"
-	)
-
-	var (
-		owner string
-		repo  string
-		asset string
-	)
-	if u.Scheme == "github" {
-		// github://cluttrdev/prebuilt?asset_path=prebuilt_{{ .Version }}_linux-amd64.tar.gz
-		owner = u.Host
-		repo = strings.TrimPrefix(u.Path, "/")
-		asset = u.Query().Get("asset")
-		if asset == "" {
-			return ProviderSpec{}, fmt.Errorf("missing query parameter: asset")
+func NewProvider(spec ProviderSpec) *Provider {
+	mayBeEnvVar := func(s string) (string, bool) {
+		pattern := regexp.MustCompile(`\$\{(?<name>[a-zA-Z_]+[a-zA-Z0-9_]*)\}`)
+		matches := pattern.FindStringSubmatch(s)
+		if matches == nil {
+			return "", false
 		}
-	} else if u.Host == "github.com" {
-		// https://github.com/$owner/$repo/releases/download/$version/$asset_path
-		parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-		owner = parts[0]
-		repo = parts[1]
-		asset = filepath.Join(parts[5:]...)
-	} else {
-		return ProviderSpec{}, fmt.Errorf("invalid url")
+		return matches[1], true
 	}
 
-	return ProviderSpec{
-		Name:             "github",
-		VersionsURL:      fmt.Sprintf(githubVersionsURL, owner, repo),
-		VersionsJSONPath: githubVersionsJSONPath,
-		DownloadURL:      fmt.Sprintf(githubDownloadURL, owner, repo, asset),
+	if key, ok := mayBeEnvVar(spec.AuthToken); ok {
+		if token := os.Getenv(key); token != "" {
+			spec.AuthToken = token
+		}
+	}
+
+	client := defaultClient()
+	if spec.AuthToken != "" {
+		client = newAuthedClient(spec.AuthToken)
+	}
+
+	return &Provider{
+		Spec:   spec,
+		Client: client,
+	}
+}
+
+func parseDSN(dsn string) (ProviderData, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return ProviderData{}, err
+	}
+
+	q, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return ProviderData{}, err
+	}
+
+	values := make(map[string]string)
+	for k := range q {
+		values[k] = q.Get(k)
+	}
+
+	return ProviderData{
+		Name:   u.Scheme,
+		Host:   u.Host,
+		Path:   strings.TrimPrefix(u.Path, "/"),
+		Values: values,
 	}, nil
+}
+
+var githubProviderSpec = ProviderSpec{
+	Name:             "github",
+	VersionsURL:      "https://api.github.com/repos/{{ .Provider.Host }}/{{ .Provider.Path }}/releases",
+	VersionsJSONPath: "$[*].tag_name",
+	DownloadURL:      "https://github.com/{{ .Provider.Host }}/{{ .Provider.Path }}/releases/download/{{ .Version }}/{{ tpl .Provider.Values.asset . }}",
+	AuthToken:        "${PREBUILT_GITHUB_TOKEN}",
+}
+
+var httpProviderSpec = ProviderSpec{
+	Name:        "http",
+	DownloadURL: "http://{{ .Provider.Host }}/{{ .Provider.Path }}",
+}
+
+var httpsProviderSpec = ProviderSpec{
+	Name:        "https",
+	DownloadURL: "https://{{ .Provider.Host }}/{{ .Provider.Path }}",
 }

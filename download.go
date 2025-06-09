@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +15,7 @@ import (
 // Download retrieves a binary asset from the given url and saves it in the
 // given directory.
 // It returns the local absolut path to the downloaded file.
-func Download(url string, dir string) (string, error) {
+func Download(ctx context.Context, client *http.Client, url string, dir string) (string, error) {
 	u, _ := _url.Parse(url)
 	filename := filepath.Base(u.Path)
 
@@ -26,7 +27,7 @@ func Download(url string, dir string) (string, error) {
 		_ = file.Close()
 	}()
 
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return "", err
 	}

@@ -17,7 +17,7 @@ import (
 )
 
 func newInstallCmd() *cli.Command {
-	var cfg installCmd
+	cfg := installCmd{}
 
 	fs := flag.NewFlagSet("prebuilt install", flag.ExitOnError)
 
@@ -34,6 +34,8 @@ func newInstallCmd() *cli.Command {
 
 type installCmd struct {
 	rootCmd
+
+	resolver Resolver
 }
 
 func (c *installCmd) RegisterFlags(fs *flag.FlagSet) {
@@ -44,8 +46,8 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	c.initLogging()
 
 	defer func() {
-		if err != nil && c.rootCmd.logFile != os.Stderr {
-			err = fmt.Errorf("%w\nSee %s for details.", err, c.rootCmd.logFile.Name())
+		if err != nil && c.logFile != os.Stderr {
+			err = fmt.Errorf("%w\nSee %s for details", err, c.logFile.Name())
 		}
 	}()
 
@@ -81,11 +83,16 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 
 	installDir := expandPath(cfg.Global.InstallDir)
 
-	// set up fancy output
+	if err := c.resolver.Init(cfg.Providers); err != nil {
+		return fmt.Errorf("initialize providers: %w", err)
+	}
+
 	var (
+		failedSpecs []BinarySpec
+		wg          sync.WaitGroup
+
+		// for fancy output
 		multiPrinter = pterm.DefaultMultiPrinter
-		failedSpecs  []BinarySpec
-		wg sync.WaitGroup
 	)
 	_, _ = multiPrinter.Start()
 	for _, spec := range binaries {
@@ -93,7 +100,7 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 		go func() {
 			defer wg.Done()
 			spinner, _ := pterm.DefaultSpinner.WithWriter(multiPrinter.NewWriter()).Start("Installing ", spec.Name)
-			if err := c.processBinary(spec, tmpDir, installDir); err != nil {
+			if err := c.processBinary(ctx, spec, tmpDir, installDir); err != nil {
 				slog.With("name", spec.Name, "error", err).
 					With(metaerr.GetMetadata(err)...).
 					Error("failed to install binary")
@@ -117,25 +124,35 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func (c *installCmd) processBinary(spec BinarySpec, tmpDir string, installDIr string) error {
-	bin, err := resolveBinarySpec(spec)
+func (c *installCmd) processBinary(ctx context.Context, spec BinarySpec, tmpDir string, installDIr string) error {
+	data, err := c.resolver.Resolve(ctx, spec)
 	if err != nil {
-		return fmt.Errorf("resolve binary spec: %w", err)
+		return err
 	}
 
-	path, err := Download(bin.DownloadURL, tmpDir)
-	if err != nil {
-		return fmt.Errorf("download binary asset: %w", err)
+	client := c.resolver.Client(data.Provider)
+	if client == nil {
+		return fmt.Errorf("missing provider client: %s", data.Provider)
 	}
 
-	if bin.ExtractPath != "" {
-		path, err = Extract(path, bin.ExtractPath)
+	path, err := Download(ctx, client, data.DownloadURL, tmpDir)
+	if err != nil {
+		return metaerr.WithMetadata(
+			fmt.Errorf("download binary asset: %w", err),
+			"url", data.DownloadURL,
+		)
+	}
+
+	// Extract
+	if spec.ExtractPath != "" {
+		path, err = Extract(path, data.ExtractPath)
 		if err != nil {
 			return fmt.Errorf("extract archived binary: %w", err)
 		}
 	}
 
-	out := filepath.Join(installDIr, bin.Name)
+	// Install
+	out := filepath.Join(installDIr, data.Name)
 	if err := Install(path, out); err != nil {
 		return fmt.Errorf("install binary: %w", err)
 	}

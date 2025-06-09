@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	// "runtime/trace"
 
 	"github.com/cluttrdev/cli"
 )
@@ -27,6 +28,19 @@ func execute(ctx context.Context) error {
 		}
 		return fmt.Errorf("parse arguments: %w", err)
 	}
+
+	// // Create a file to store the trace output
+	// f, err := os.Create("trace.out")
+	// if err != nil {
+	// 	return fmt.Errorf("failed to create trace output file: %v", err)
+	// }
+	// defer f.Close()
+	//
+	// // Start the trace
+	// if err := trace.Start(f); err != nil {
+	// 	return fmt.Errorf("failed to start trace: %v", err)
+	// }
+	// defer trace.Stop()
 
 	return cmd.Run(ctx)
 }

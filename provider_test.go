@@ -1,66 +1,46 @@
 package main
 
 import (
-	"net/url"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 )
 
-func urlMustParse(s string) url.URL {
-	u, err := url.Parse(s)
-	if err != nil {
-		panic(err)
-	}
-	return *u
-}
-
-func Test_resolveGitHubProvider(t *testing.T) {
+func Test_resolveProviderData(t *testing.T) {
 	tests := []struct {
 		testName string // description of this test case
 		// Named input parameters for target function.
-		u       url.URL
-		want    ProviderSpec
+		s       string
+		want    ProviderData
 		wantErr bool
 	}{
 		{
-			u: urlMustParse("github://cluttrdev/prebuilt?asset=prebuilt_{{ .Version }}_linux-amd64.tar.gz"),
-			want: ProviderSpec{
-				Name:             "github",
-				VersionsURL:      "https://api.github.com/repos/cluttrdev/prebuilt/releases",
-				VersionsJSONPath: "$[*].tag_name",
-				DownloadURL:      "https://github.com/cluttrdev/prebuilt/releases/download/{{ .Version }}/prebuilt_{{ .Version }}_linux-amd64.tar.gz",
+			testName: "github",
+			s:        "github://cluttrdev/prebuilt?asset=prebuilt_{{ .Version }}_linux-amd64.tar.gz",
+			want: ProviderData{
+				Name: "github",
+				Host: "cluttrdev",
+				Path: "prebuilt",
+				Values: map[string]string{
+					"asset": "prebuilt_{{ .Version }}_linux-amd64.tar.gz",
+				},
 			},
-		},
-		{
-			u: urlMustParse("https://github.com/cluttrdev/prebuilt/releases/download/{{ .Version }}/prebuilt_{{ .Version }}_linux-amd64.tar.gz"),
-			want: ProviderSpec{
-				Name:             "github",
-				VersionsURL:      "https://api.github.com/repos/cluttrdev/prebuilt/releases",
-				VersionsJSONPath: "$[*].tag_name",
-				DownloadURL:      "https://github.com/cluttrdev/prebuilt/releases/download/{{ .Version }}/prebuilt_{{ .Version }}_linux-amd64.tar.gz",
-			},
-		},
-		{
-			u:       urlMustParse("github://cluttrdev/prebuilt"),
-			wantErr: true, // missing asset parameter
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
-			got, gotErr := resolveGitHubProvider(tt.u)
+			got, gotErr := parseDSN(tt.s)
 			if gotErr != nil {
 				if !tt.wantErr {
-					t.Errorf("resolveGitHubProvider() failed: %v", gotErr)
+					t.Errorf("resolveProviderData() failed: %v", gotErr)
 				}
 				return
 			}
 			if tt.wantErr {
-				t.Fatal("resolveGitHubProvider() succeeded unexpectedly")
+				t.Fatal("resolveProviderData() succeeded unexpectedly")
 			}
-
 			if d := cmp.Diff(tt.want, got); d != "" {
-				t.Errorf("resolveGitHubProvider() mismatch (-want/+got): %v", d)
+				t.Errorf("resolveProviderData() mismatch (-want/+got): %v", d)
 			}
 		})
 	}

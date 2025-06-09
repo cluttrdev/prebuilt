@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,12 +19,12 @@ import (
 // retrieve a list of available versions.
 // The `spec` constraints are then used to determine the latest version.
 // If no url is given, the spec is returned as-is.
-func ResolveVersion(url string, path string, spec string, prefix string) (string, error) {
+func ResolveVersion(ctx context.Context, client *http.Client, url string, path string, spec string, prefix string) (string, error) {
 	if url == "" {
 		return spec, nil
 	}
 
-	versions, err := GetVersions(url, path)
+	versions, err := GetVersions(ctx, client, url, path)
 	if err != nil {
 		return "", err
 	}
@@ -33,8 +34,8 @@ func ResolveVersion(url string, path string, spec string, prefix string) (string
 
 // GetVersions queries the `url` and filters the response using the JSONPath
 // `path` to get a list of versions.
-func GetVersions(url string, path string) ([]string, error) {
-	resp, err := http.Get(url)
+func GetVersions(ctx context.Context, client *http.Client, url string, path string) ([]string, error) {
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
