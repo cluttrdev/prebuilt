@@ -23,23 +23,22 @@ type Resolver struct {
 func (r *Resolver) Init(ps []ProviderSpec) error {
 	r.Providers = make(map[string]*Provider)
 
-	for _, spec := range ps {
+	builtinProviderSpecs := []ProviderSpec{
+		githubProviderSpec,
+		gitlabProviderSpec,
+		httpsProviderSpec,
+		httpProviderSpec,
+	}
+	for _, spec := range builtinProviderSpecs {
 		if err := r.initProvider(spec); err != nil {
 			return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", spec.Name)
 		}
 	}
 
-	if _, ok := r.Providers["github"]; !ok {
-		if err := r.initProvider(githubProviderSpec); err != nil {
-			return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", "github")
+	for _, spec := range ps {
+		if err := r.initProvider(spec); err != nil {
+			return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", spec.Name)
 		}
-	}
-
-	if err := r.initProvider(httpProviderSpec); err != nil {
-		return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", "http")
-	}
-	if err := r.initProvider(httpsProviderSpec); err != nil {
-		return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", "https")
 	}
 
 	return nil
@@ -129,16 +128,16 @@ func (r *Resolver) resolveProvider(cfg ProviderConfig) (*Provider, ProviderData,
 	)
 	if cfg.Spec != nil {
 		prov = NewProvider(*cfg.Spec)
-		data.Name = cfg.Spec.Name
+		data.Scheme = cfg.Spec.Name
 	} else if cfg.DSN != nil {
 		data, err = parseDSN(*cfg.DSN)
 		if err != nil {
 			return nil, ProviderData{}, err
 		}
 		var ok bool
-		prov, ok = r.Providers[data.Name]
+		prov, ok = r.Providers[data.Scheme]
 		if !ok {
-			return nil, ProviderData{}, fmt.Errorf("provider unknown: %s", data.Name)
+			return nil, ProviderData{}, fmt.Errorf("provider unknown: %s", data.Scheme)
 		}
 	} else {
 		return nil, ProviderData{}, fmt.Errorf("invalid provider config")

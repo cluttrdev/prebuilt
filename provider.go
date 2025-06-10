@@ -9,7 +9,7 @@ import (
 )
 
 type ProviderData struct {
-	Name   string
+	Scheme string
 	Host   string
 	Path   string
 	Values map[string]string
@@ -64,7 +64,7 @@ func parseDSN(dsn string) (ProviderData, error) {
 	}
 
 	return ProviderData{
-		Name:   u.Scheme,
+		Scheme: u.Scheme,
 		Host:   u.Host,
 		Path:   strings.TrimPrefix(u.Path, "/"),
 		Values: values,
@@ -77,6 +77,14 @@ var githubProviderSpec = ProviderSpec{
 	VersionsJSONPath: "$[*].tag_name",
 	DownloadURL:      "https://github.com/{{ .Provider.Host }}/{{ .Provider.Path }}/releases/download/{{ .Version }}/{{ tpl .Provider.Values.asset . }}",
 	AuthToken:        "${PREBUILT_GITHUB_TOKEN}",
+}
+
+var gitlabProviderSpec = ProviderSpec{
+	Name:             "gitlab",
+	VersionsURL:      `https://gitlab.com/api/v4/projects/{{ printf "%s/%s" .Provider.Host .Provider.Path | urlquery }}/releases`,
+	VersionsJSONPath: "$[*].tag_name",
+	DownloadURL:      "https://gitlab.com/{{ .Provider.Host }}/{{ .Provider.Path }}/-/releases/{{ .Version }}/downloads/{{ tpl .Provider.Values.asset . }}",
+	AuthToken:        "${PREBUILT_GITLAB_TOKEN}",
 }
 
 var httpProviderSpec = ProviderSpec{

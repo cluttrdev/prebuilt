@@ -18,9 +18,9 @@ func Test_resolveProviderData(t *testing.T) {
 			testName: "github",
 			s:        "github://cluttrdev/prebuilt?asset=prebuilt_{{ .Version }}_linux-amd64.tar.gz",
 			want: ProviderData{
-				Name: "github",
-				Host: "cluttrdev",
-				Path: "prebuilt",
+				Scheme: "github",
+				Host:   "cluttrdev",
+				Path:   "prebuilt",
 				Values: map[string]string{
 					"asset": "prebuilt_{{ .Version }}_linux-amd64.tar.gz",
 				},
