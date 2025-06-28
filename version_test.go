@@ -90,10 +90,16 @@ func TestFindLatestVersion(t *testing.T) {
 		},
 		{
 			versions:    []string{"jq-1.7.1"},
-			constraints: ">1.7",
+			constraints: ">1.7.0",
 			prefix:      "jq-",
 			want:        "jq-1.7.1",
 			wantErr:     false,
+		},
+		{
+			versions: []string{"0.1.0", "1.0.0-rc1"},
+			constraints: "latest",
+			want: "0.1.0",
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {

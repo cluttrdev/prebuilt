@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/AsaiYusuke/jsonpath"
-	"github.com/hashicorp/go-version"
+	"github.com/Masterminds/semver/v3"
 	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
@@ -66,28 +66,21 @@ func GetVersions(ctx context.Context, client *http.Client, url string, path stri
 // FindLatestVersion returns the latest version from the list of `versions`
 // that matches the given constraints `spec`.
 func FindLatestVersion(versions []string, spec string, prefix string) (string, error) {
-	var constraint *version.Constraints
-	switch spec {
-	case "", "*", "latest":
-	default:
-		c, err := version.NewConstraint(strings.TrimPrefix(spec, prefix))
-		if err != nil {
-			return "", err
-		}
-		constraint = &c
+	if spec == "latest" {
+		spec = "*"
+	}
+	constraints, err := semver.NewConstraint(strings.TrimPrefix(spec, prefix))
+	if err != nil {
+		return "", err
 	}
 
-	vs := make([]*version.Version, 0, len(versions))
+	vs := make([]*semver.Version, 0, len(versions))
 	for _, raw := range versions {
-		v, err := version.NewVersion(strings.TrimPrefix(raw, prefix))
+		v, err := semver.NewVersion(strings.TrimPrefix(raw, prefix))
 		if err != nil {
-			// return "", fmt.Errorf("parse version: %w", err)
 			continue
 		}
-		if constraint != nil && !constraint.Check(v) {
-			continue
-		}
-		if v.Prerelease() != "" {
+		if !constraints.Check(v) {
 			continue
 		}
 		vs = append(vs, v)
@@ -96,7 +89,7 @@ func FindLatestVersion(versions []string, spec string, prefix string) (string, e
 		return "", fmt.Errorf("no matching versions: %v", spec)
 	}
 
-	sort.Sort(sort.Reverse(version.Collection(vs)))
+	sort.Sort(sort.Reverse(semver.Collection(vs)))
 	latest := prefix + vs[0].Original()
 	return latest, nil
 }
