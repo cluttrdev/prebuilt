@@ -13,6 +13,7 @@ import (
 
 	"github.com/cluttrdev/cli"
 	"github.com/pterm/pterm"
+
 	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
 
@@ -25,7 +26,7 @@ func newInstallCmd() *cli.Command {
 
 	return &cli.Command{
 		Name:       "install",
-		ShortHelp:  "Install prebuilt binaries.",
+		ShortHelp:  "Install pre-built binaries.",
 		ShortUsage: "prebuilt install [OPTION]... [NAME]...",
 		Flags:      fs,
 		Exec:       cfg.Exec,
@@ -56,7 +57,16 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	var binaries []BinarySpec
+	if err := c.resolver.Init(cfg.Providers); err != nil {
+		return fmt.Errorf("initialize providers: %w", err)
+	}
+
+	lock, err := c.getLock(ctx, cfg.Binaries)
+	if err != nil {
+		return err
+	}
+
+	var binaries []BinaryData
 	if len(args) > 0 {
 		for _, name := range args {
 			index := slices.IndexFunc(cfg.Binaries, func(b BinarySpec) bool {
@@ -65,10 +75,10 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 			if index == -1 {
 				return fmt.Errorf("name %s not found", name)
 			}
-			binaries = append(binaries, cfg.Binaries[index])
+			binaries = append(binaries, lock.Binaries[index])
 		}
 	} else {
-		binaries = cfg.Binaries
+		binaries = lock.Binaries
 	}
 
 	tmpDir, err := os.MkdirTemp("", "prebuilt-*")
@@ -83,29 +93,25 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 
 	installDir := expandPath(cfg.Global.InstallDir)
 
-	if err := c.resolver.Init(cfg.Providers); err != nil {
-		return fmt.Errorf("initialize providers: %w", err)
-	}
-
 	var (
-		failedSpecs []BinarySpec
+		failedSpecs []BinaryData
 		wg          sync.WaitGroup
 
 		// for fancy output
 		multiPrinter = pterm.DefaultMultiPrinter
 	)
 	_, _ = multiPrinter.Start()
-	for _, spec := range binaries {
+	for _, data := range binaries {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			spinner, _ := pterm.DefaultSpinner.WithWriter(multiPrinter.NewWriter()).Start("Installing ", spec.Name)
-			if err := c.processBinary(ctx, spec, tmpDir, installDir); err != nil {
-				slog.With("name", spec.Name, "error", err).
+			spinner, _ := pterm.DefaultSpinner.WithWriter(multiPrinter.NewWriter()).Start("Installing ", data.Name)
+			if err := c.processBinary(ctx, data, tmpDir, installDir); err != nil {
+				slog.With("name", data.Name, "error", err).
 					With(metaerr.GetMetadata(err)...).
 					Error("failed to install binary")
-				failedSpecs = append(failedSpecs, spec)
-				spinner.Fail("Failed to install ", spec.Name, ": ", err)
+				failedSpecs = append(failedSpecs, data)
+				spinner.Fail("Failed to install ", data.Name, ": ", err)
 				return
 			}
 			spinner.Success()
@@ -124,12 +130,35 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func (c *installCmd) processBinary(ctx context.Context, spec BinarySpec, tmpDir string, installDIr string) error {
-	data, err := c.resolver.Resolve(ctx, spec)
-	if err != nil {
-		return err
-	}
+func (c *installCmd) getLock(ctx context.Context, binaries []BinarySpec) (Lock, error) {
+	var lock Lock
 
+	lockfile := replaceFileExt(c.ConfigFile, ".lock")
+	if _, err := os.Stat(lockfile); os.IsNotExist(err) {
+		spinner, _ := pterm.DefaultSpinner.Start("Resolving binaries")
+		lock, err = c.resolver.Resolve(ctx, binaries)
+		if err != nil {
+			slog.With("error", err).
+				With(metaerr.GetMetadata(err)...).
+				Error("failed to resolve binaries")
+			spinner.Fail()
+			return Lock{}, err
+		}
+		spinner.Success()
+		if err := writeLockFile(lockfile, lock); err != nil {
+			slog.Error("failed to write lock file", "error", err)
+		}
+	} else {
+		lock, err = readLockFile(lockfile)
+		if err != nil {
+			slog.Error("failed to read lock file", "file", lockfile, "error", err)
+			return Lock{}, err
+		}
+	}
+	return lock, nil
+}
+
+func (c *installCmd) processBinary(ctx context.Context, data BinaryData, tmpDir string, installDIr string) error {
 	client := c.resolver.Client(data.Provider)
 	if client == nil {
 		return fmt.Errorf("missing provider client: %s", data.Provider)
@@ -144,7 +173,7 @@ func (c *installCmd) processBinary(ctx context.Context, spec BinarySpec, tmpDir 
 	}
 
 	// Extract
-	if spec.ExtractPath != "" {
+	if data.ExtractPath != "" {
 		path, err = Extract(path, data.ExtractPath)
 		if err != nil {
 			return fmt.Errorf("extract archived binary: %w", err)

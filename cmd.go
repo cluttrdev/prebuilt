@@ -46,6 +46,7 @@ func configure() *cli.Command {
 		Subcommands: []*cli.Command{
 			cli.DefaultVersionCommand(os.Stdout),
 			newInstallCmd(),
+			newLockCmd(),
 		},
 		Flags: fs,
 		Exec:  cfg.Exec,

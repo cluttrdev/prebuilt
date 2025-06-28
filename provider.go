@@ -33,6 +33,8 @@ func NewProvider(spec ProviderSpec) *Provider {
 	if key, ok := mayBeEnvVar(spec.AuthToken); ok {
 		if token := os.Getenv(key); token != "" {
 			spec.AuthToken = token
+		} else {
+			spec.AuthToken = ""
 		}
 	}
 

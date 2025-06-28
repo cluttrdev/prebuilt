@@ -1,20 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 
 	"go.cluttr.dev/prebuilt/internal/metaerr"
 )
-
-type BinaryData struct {
-	Provider    string
-	Name        string
-	Version     string
-	DownloadURL string
-	ExtractPath string
-}
 
 type Resolver struct {
 	Providers map[string]*Provider
@@ -63,7 +61,29 @@ func (r *Resolver) initProvider(spec ProviderSpec) error {
 	return nil
 }
 
-func (r *Resolver) Resolve(ctx context.Context, bin BinarySpec) (BinaryData, error) {
+func (r *Resolver) Resolve(ctx context.Context, bins []BinarySpec) (Lock, error) {
+	var locked []BinaryData
+	for _, spec := range bins {
+		data, err := r.resolve(ctx, spec)
+		if err != nil {
+			return Lock{}, metaerr.WithMetadata(err, "name", data.Name)
+		}
+		locked = append(locked, data)
+	}
+
+	digest, err := r.hash(locked)
+	if err != nil {
+		return Lock{}, err
+	}
+
+	return Lock{
+		Generated: time.Now().UTC(),
+		Digest:    digest,
+		Binaries:  locked,
+	}, nil
+}
+
+func (r *Resolver) resolve(ctx context.Context, bin BinarySpec) (BinaryData, error) {
 	prov, data, err := r.resolveProvider(bin.Provider)
 	if err != nil {
 		return BinaryData{}, err
@@ -120,6 +140,18 @@ func (r *Resolver) Resolve(ctx context.Context, bin BinarySpec) (BinaryData, err
 	}, nil
 }
 
+func (r *Resolver) hash(bins []BinaryData) (string, error) {
+	data, err := json.Marshal(bins)
+	if err != nil {
+		return "", err
+	}
+	s, err := digest(bytes.NewBuffer(data))
+	if err != nil {
+		return "", err
+	}
+	return "sha256:" + s, nil
+}
+
 func (r *Resolver) resolveProvider(cfg ProviderConfig) (*Provider, ProviderData, error) {
 	var (
 		prov *Provider
@@ -144,4 +176,12 @@ func (r *Resolver) resolveProvider(cfg ProviderConfig) (*Provider, ProviderData,
 	}
 
 	return prov, data, nil
+}
+
+func digest(in io.Reader) (string, error) {
+	hash := crypto.SHA256.New()
+	if _, err := io.Copy(hash, in); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
