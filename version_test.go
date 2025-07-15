@@ -139,7 +139,7 @@ func TestFindLatestVersion(t *testing.T) {
 	}{
 		{
 			versions:    []string{"v0.1.0", "v0.0.1"},
-			constraints: "*",
+			constraints: "",
 			want:        "v0.1.0",
 			wantErr:     false,
 		},

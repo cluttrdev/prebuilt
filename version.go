@@ -82,7 +82,7 @@ func GetVersions(ctx context.Context, client *http.Client, url string, path stri
 // FindLatestVersion returns the latest version from the list of `versions`
 // that matches the given constraints `spec`.
 func FindLatestVersion(versions []string, spec string, prefix string) (string, error) {
-	if spec == "latest" {
+	if spec == "" || spec == "latest" {
 		spec = "*"
 	}
 	constraints, err := semver.NewConstraint(strings.TrimPrefix(spec, prefix))
