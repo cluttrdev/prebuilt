@@ -75,7 +75,7 @@ func parseDSN(dsn string) (ProviderData, error) {
 
 var githubProviderSpec = ProviderSpec{
 	Name:             "github",
-	VersionsURL:      "https://api.github.com/repos/{{ .Provider.Host }}/{{ .Provider.Path }}/releases",
+	VersionsURL:      "https://api.github.com/repos/{{ .Provider.Host }}/{{ .Provider.Path }}/releases?per_page=100",
 	VersionsJSONPath: "$[*].tag_name",
 	DownloadURL:      "https://github.com/{{ .Provider.Host }}/{{ .Provider.Path }}/releases/download/{{ .Version }}/{{ tpl .Provider.Values.asset . }}",
 	AuthToken:        "${PREBUILT_GITHUB_TOKEN}",
@@ -83,7 +83,7 @@ var githubProviderSpec = ProviderSpec{
 
 var gitlabProviderSpec = ProviderSpec{
 	Name:             "gitlab",
-	VersionsURL:      `https://gitlab.com/api/v4/projects/{{ printf "%s/%s" .Provider.Host .Provider.Path | urlquery }}/releases`,
+	VersionsURL:      `https://gitlab.com/api/v4/projects/{{ printf "%s/%s" .Provider.Host .Provider.Path | urlquery }}/releases?per_page=100`,
 	VersionsJSONPath: "$[*].tag_name",
 	DownloadURL:      "https://gitlab.com/{{ .Provider.Host }}/{{ .Provider.Path }}/-/releases/{{ .Version }}/downloads/{{ tpl .Provider.Values.asset . }}",
 	AuthToken:        "${PREBUILT_GITLAB_TOKEN}",

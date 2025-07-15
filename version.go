@@ -35,32 +35,48 @@ func ResolveVersion(ctx context.Context, client *http.Client, url string, path s
 // GetVersions queries the `url` and filters the response using the JSONPath
 // `path` to get a list of versions.
 func GetVersions(ctx context.Context, client *http.Client, url string, path string) ([]string, error) {
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, metaerr.WithMetadata(
-			fmt.Errorf("%d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
-			"body", string(body),
-		)
+	var versions []string
+
+	for {
+		resp, err := client.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, metaerr.WithMetadata(
+				fmt.Errorf("%d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+				"body", string(body),
+			)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read response body: %w", err)
+		}
+
+		var src any
+		if err := json.Unmarshal(body, &src); err != nil {
+			return nil, fmt.Errorf("unmarshal response body: %w", err)
+		}
+
+		vs, err := retrieveVersions(src, path)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, vs...)
+
+		nextLink := findNextLink(resp.Header.Values("Link"))
+		if nextLink == "" {
+			break
+		}
+		url = nextLink
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	var src any
-	if err := json.Unmarshal(body, &src); err != nil {
-		return nil, fmt.Errorf("unmarshal response body: %w", err)
-	}
-
-	return retrieveVersions(src, path)
+	return versions, nil
 }
 
 // FindLatestVersion returns the latest version from the list of `versions`
@@ -113,4 +129,40 @@ func retrieveVersions(src any, path string) ([]string, error) {
 	}
 
 	return versions, nil
+}
+
+func findNextLink(headers []string) string {
+	for _, raw := range headers {
+		// Header values may be comma delimited sequences
+		for _, header := range strings.Split(raw, ",") {
+			var linkURL, linkRel string
+
+			// Link header values have the form: <url>; rel="next"; foo="bar"
+			for _, part := range strings.Split(header, ";") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+
+				// <url>
+				if part[0] == '<' && part[len(part)-1] == '>' {
+					linkURL = strings.Trim(part, "<>")
+					continue
+				}
+
+				// rel="next"
+				keyval := strings.SplitN(part, "=", 2)
+				if len(keyval) != 2 {
+					continue
+				} else if strings.ToLower(keyval[0]) == "rel" {
+					linkRel = strings.Trim(keyval[1], "\"")
+				}
+			}
+
+			if strings.ToLower(linkRel) == "next" {
+				return linkURL
+			}
+		}
+	}
+	return ""
 }
