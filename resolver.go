@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"go.cluttr.dev/prebuilt/internal/metaerr"
@@ -62,15 +63,55 @@ func (r *Resolver) initProvider(spec ProviderSpec) error {
 }
 
 func (r *Resolver) Resolve(ctx context.Context, bins []BinarySpec) (Lock, error) {
-	var locked []BinaryData
-	for _, spec := range bins {
-		data, err := r.resolve(ctx, spec)
-		if err != nil {
-			return Lock{}, metaerr.WithMetadata(err, "name", data.Name)
-		}
-		locked = append(locked, data)
+	// set up workers
+	type result struct {
+		data BinaryData
+		err  error
 	}
 
+	numBins := len(bins)
+	jobs := make(chan BinarySpec, numBins)
+	results := make(chan result, numBins)
+
+	worker := func(specs <-chan BinarySpec, res chan<- result) {
+		for spec := range specs {
+			data, err := r.resolve(ctx, spec)
+			if err != nil {
+				res <- result{
+					err: metaerr.WithMetadata(err, "name", spec.Name),
+				}
+			}
+			res <- result{
+				data: data,
+			}
+		}
+	}
+
+	const concurrency = 8
+	for range concurrency {
+		go worker(jobs, results)
+	}
+
+	// fan out jobs
+	for _, spec := range bins {
+		jobs <- spec
+	}
+	close(jobs)
+
+	// fan in results
+	var locked []BinaryData
+	for range numBins {
+		res := <-results
+		if res.err != nil {
+			return Lock{}, res.err
+		}
+		locked = append(locked, res.data)
+	}
+	sort.SliceStable(locked, func(i, j int) bool {
+		return locked[i].Name < locked[j].Name
+	})
+
+	// calculate checksum
 	digest, err := r.hash(locked)
 	if err != nil {
 		return Lock{}, err
