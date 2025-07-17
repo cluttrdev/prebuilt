@@ -69,11 +69,11 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	var binaries []BinaryData
 	if len(args) > 0 {
 		for _, name := range args {
-			index := slices.IndexFunc(cfg.Binaries, func(b BinarySpec) bool {
+			index := slices.IndexFunc(lock.Binaries, func(b BinaryData) bool {
 				return b.Name == name
 			})
 			if index == -1 {
-				return fmt.Errorf("name %s not found", name)
+				return fmt.Errorf("no configuration found: %s", name)
 			}
 			binaries = append(binaries, lock.Binaries[index])
 		}
