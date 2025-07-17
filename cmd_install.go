@@ -37,10 +37,15 @@ type installCmd struct {
 	rootCmd
 
 	resolver Resolver
+
+	// flags
+	update bool
 }
 
 func (c *installCmd) RegisterFlags(fs *flag.FlagSet) {
 	c.rootCmd.RegisterFlags(fs)
+
+	fs.BoolVar(&c.update, "update", false, "Update versions in lock file.")
 }
 
 func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
@@ -61,7 +66,7 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 		return fmt.Errorf("initialize providers: %w", err)
 	}
 
-	lock, err := c.getLock(ctx, cfg.Binaries)
+	lock, err := c.getLock(ctx, cfg.Binaries, c.update)
 	if err != nil {
 		return err
 	}
@@ -130,11 +135,11 @@ func (c *installCmd) Exec(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func (c *installCmd) getLock(ctx context.Context, binaries []BinarySpec) (Lock, error) {
+func (c *installCmd) getLock(ctx context.Context, binaries []BinarySpec, update bool) (Lock, error) {
 	var lock Lock
 
 	lockfile := replaceFileExt(c.ConfigFile, ".lock")
-	if _, err := os.Stat(lockfile); os.IsNotExist(err) {
+	if _, err := os.Stat(lockfile); os.IsNotExist(err) || update {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving binaries")
 		lock, err = c.resolver.Resolve(ctx, binaries)
 		if err != nil {
