@@ -20,8 +20,8 @@ github.com/MarvinJWendt/testza v0.5.2/go.mod h1:xu53QFE5sCdjtMCKk8YMQ2MnymimEctc
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/atomicgo/cursor v0.0.1/go.mod h1:cBON2QmmrysudxNBFthvMtN32r3jxVRIvzkUiF/RuIk=
-github.com/cluttrdev/cli v0.0.0-20240318153739-b60d492ac8ff h1:sLmFPSp1na6ay0Z2BkxIK9zwuWZ+nW6EISyTQl6soec=
-github.com/cluttrdev/cli v0.0.0-20240318153739-b60d492ac8ff/go.mod h1:Yo/r2O/t6guxglvLWE11UXM/0uEcjWPlK3poxjXktWc=
+github.com/cluttrdev/cli v0.0.0-20250719095132-732c23cca50b h1:g1Kd84VBrJ5pqc0EmEDBI7nOy5o7OQDaXo2nPSZ7pG8=
+github.com/cluttrdev/cli v0.0.0-20250719095132-732c23cca50b/go.mod h1:Yo/r2O/t6guxglvLWE11UXM/0uEcjWPlK3poxjXktWc=
 github.com/containerd/console v1.0.3 h1:lIr7SlA5PxZyMV30bDW0MGbiOPXwc63yRuCP0ARubLw=
 github.com/containerd/console v1.0.3/go.mod h1:7LqA/THxQ86k76b8c/EMSiaJ3h1eZkMkXar0TQ1gf3U=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
