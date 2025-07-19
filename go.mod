@@ -2,7 +2,7 @@ module go.cluttr.dev/prebuilt
 
 go 1.23.0
 
-toolchain go1.24.3
+toolchain go1.24.5
 
 require (
 	github.com/AsaiYusuke/jsonpath v1.6.0
