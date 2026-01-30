@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cluttrdev/cli"
 )
@@ -112,10 +113,12 @@ func (c *rootCmd) Exec(ctx context.Context, args []string) error {
 }
 
 func (c *rootCmd) initLogging() {
-	if stateDir, err := userStateDir(); err == nil {
-		c.logFile, _ = os.OpenFile(filepath.Join(stateDir, "prebuilt.log"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
-	}
-	if c.logFile == nil {
+	var (
+		stateDir = xdgDir(xdgDataHome)
+		err      error
+	)
+	c.logFile, err = os.OpenFile(filepath.Join(stateDir, "prebuilt.log"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
+	if err != nil {
 		c.logFile = os.Stderr
 	}
 
@@ -126,15 +129,46 @@ func (c *rootCmd) initLogging() {
 	initLogging(c.logFile, level, c.logFormat)
 }
 
-func userStateDir() (string, error) {
-	xdgStateHome, ok := os.LookupEnv("XDG_STATE_HOME")
-	if !ok || xdgStateHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		xdgStateHome = filepath.Join(home, ".local", "state")
+// xdgHomeKind represents the kind of XDG home directory.
+type xdgHomeKind string
+
+const (
+	xdgDataHome   xdgHomeKind = "DATA"
+	xdgConfigHome xdgHomeKind = "CONFIG"
+	xdgCacheHome  xdgHomeKind = "CACHE"
+	xdgStateHome  xdgHomeKind = "STATE"
+)
+
+// xdgDir returns the application's directory for the given XDG kind.
+func xdgDir(kind xdgHomeKind) string {
+	const appName = "prebuilt"
+
+	if path := os.Getenv("PREBUILT_" + string(kind) + "_HOME"); path != "" {
+		return filepath.Join(path, appName)
 	}
 
-	return xdgStateHome, nil
+	if path := os.Getenv("PREBUILT_HOME"); path != "" {
+		return filepath.Join(path, strings.ToLower(string(kind)), appName)
+	}
+
+	if path := os.Getenv("XDG_" + string(kind) + "_HOME"); path != "" {
+		return filepath.Join(path, appName)
+	}
+
+	if path, _ := os.UserHomeDir(); path != "" {
+		switch kind {
+		case xdgDataHome:
+			return filepath.Join(path, ".local", "share", appName)
+		case xdgStateHome:
+			return filepath.Join(path, ".local", "state", appName)
+		default:
+			return filepath.Join(path, strings.ToLower(string(kind)), appName)
+		}
+	}
+
+	if path, err := os.Getwd(); path != "" && err == nil {
+		return filepath.Join(path, strings.ToLower(string(kind)), appName)
+	}
+
+	return filepath.Join("."+appName, strings.ToLower(string(kind)))
 }
