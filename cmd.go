@@ -129,6 +129,22 @@ func (c *rootCmd) initLogging() {
 	initLogging(c.logFile, level, c.logFormat)
 }
 
+// loadConfig loads the configuration file.
+func (c *rootCmd) loadConfig() (Config, error) {
+	path := c.ConfigFile
+	if path == "" {
+		configDir := xdgDir(xdgConfigHome)
+		path = filepath.Join(configDir, "config.yaml")
+	}
+
+	var cfg Config
+	if err := LoadConfigFile(c.ConfigFile, &cfg); err != nil {
+		return Config{}, fmt.Errorf("load configuration: %w", err)
+	}
+
+	return cfg, nil
+}
+
 // xdgHomeKind represents the kind of XDG home directory.
 type xdgHomeKind string
 
