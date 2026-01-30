@@ -43,16 +43,15 @@ func (c *lockCommand) RegisterFlags(fs *flag.FlagSet) {
 
 func (c *lockCommand) Exec(ctx context.Context, args []string) (err error) {
 	c.initLogging()
-
 	defer func() {
 		if err != nil && c.logFile != os.Stderr {
 			err = fmt.Errorf("%w\nSee %s for details", err, c.logFile.Name())
 		}
 	}()
 
-	var cfg Config
-	if err := LoadConfigFile(c.ConfigFile, &cfg); err != nil {
-		return fmt.Errorf("load configuration: %w", err)
+	cfg, err := c.loadConfig()
+	if err != nil {
+		return err
 	}
 
 	if err := c.resolver.Init(cfg.Providers); err != nil {
