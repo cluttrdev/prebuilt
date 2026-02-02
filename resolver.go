@@ -19,27 +19,12 @@ type Resolver struct {
 	Providers map[string]*Provider
 }
 
-func (r *Resolver) Init(ps []ProviderSpec) error {
-	r.Providers = make(map[string]*Provider)
-
-	builtinProviderSpecs := []ProviderSpec{
-		githubProviderSpec,
-		gitlabProviderSpec,
-		httpsProviderSpec,
-		httpProviderSpec,
+func (r *Resolver) Init(ps []ProviderSpec, tokens map[string]string) error {
+	providers, err := InitProviders(ps, tokens)
+	if err != nil {
+		return fmt.Errorf("init providers: %w", err)
 	}
-	for _, spec := range builtinProviderSpecs {
-		if err := r.initProvider(spec); err != nil {
-			return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", spec.Name)
-		}
-	}
-
-	for _, spec := range ps {
-		if err := r.initProvider(spec); err != nil {
-			return metaerr.WithMetadata(fmt.Errorf("init provider: %w", err), "name", spec.Name)
-		}
-	}
-
+	r.Providers = providers
 	return nil
 }
 
@@ -48,18 +33,6 @@ func (r *Resolver) Client(name string) *http.Client {
 		return c.Client
 	}
 	return defaultClient()
-}
-
-func (r *Resolver) initProvider(spec ProviderSpec) error {
-	if spec.Name == "" {
-		return fmt.Errorf("missing provider name")
-	}
-	if _, ok := r.Providers[spec.Name]; ok {
-		return fmt.Errorf("provider already initialized: %s", spec.Name)
-	}
-
-	r.Providers[spec.Name] = NewProvider(spec)
-	return nil
 }
 
 func (r *Resolver) Resolve(ctx context.Context, bins []BinarySpec) (Lock, error) {
