@@ -56,6 +56,8 @@ type ProviderSpec struct {
 	VersionsJSONPath string `yaml:"versionsJsonPath"`
 	DownloadURL      string `yaml:"downloadUrl"`
 	AuthToken        string `yaml:"authToken"`
+
+	Extends string `yaml:"extends"`
 }
 
 // LoadConfig reads the configuration from a reader into `cfg`.
@@ -115,6 +117,31 @@ func LoadConfigFile(name string, cfg *Config) error {
 		return err
 	}
 	return LoadConfig(file, cfg)
+}
+
+// LoadAuthTokens loads authentication tokens from a file.
+func LoadAuthTokens(name string) (map[string]string, error) {
+	file, err := os.Open(name)
+	if os.IsNotExist(err) { // this is fine
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
+
+	auth := struct {
+		Providers map[string]struct {
+			Token string `yaml:"token"`
+		} `yaml:"providers"`
+	}{}
+	if err := yaml.NewDecoder(file).Decode(&auth); err != nil {
+		return nil, fmt.Errorf("decode file: %w", err)
+	}
+
+	var tokens = make(map[string]string)
+	for name, data := range auth.Providers {
+		tokens[name] = data.Token
+	}
+	return tokens, nil
 }
 
 func getBinName(bin BinarySpec, provider ProviderSpec) string {

@@ -42,7 +42,9 @@ func (c *lockCommand) RegisterFlags(fs *flag.FlagSet) {
 }
 
 func (c *lockCommand) Exec(ctx context.Context, args []string) (err error) {
-	c.initLogging()
+	if err := c.initLogging(); err != nil {
+		return err
+	}
 	defer func() {
 		if err != nil && c.logFile != os.Stderr {
 			err = fmt.Errorf("%w\nSee %s for details", err, c.logFile.Name())
@@ -54,7 +56,13 @@ func (c *lockCommand) Exec(ctx context.Context, args []string) (err error) {
 		return err
 	}
 
-	if err := c.resolver.Init(cfg.Providers); err != nil {
+	authFile := filepath.Join(xdgDir(xdgConfigHome), "auth.yaml")
+	tokens, err := LoadAuthTokens(authFile)
+	if err != nil {
+		return fmt.Errorf("load auth tokens: %w", err)
+	}
+
+	if err := c.resolver.Init(append(builtinProviderSpecs, cfg.Providers...), tokens); err != nil {
 		return fmt.Errorf("initialize providers: %w", err)
 	}
 

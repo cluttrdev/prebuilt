@@ -112,14 +112,17 @@ func (c *rootCmd) Exec(ctx context.Context, args []string) error {
 	return flag.ErrHelp
 }
 
-func (c *rootCmd) initLogging() {
+func (c *rootCmd) initLogging() error {
 	var (
-		stateDir = xdgDir(xdgDataHome)
+		stateDir = xdgDir(xdgStateHome)
 		err      error
 	)
+	if err := os.MkdirAll(filepath.Dir(stateDir), os.ModePerm); err != nil {
+		return fmt.Errorf("create state directory: %w", err)
+	}
 	c.logFile, err = os.OpenFile(filepath.Join(stateDir, "prebuilt.log"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 	if err != nil {
-		c.logFile = os.Stderr
+		return fmt.Errorf("open log file: %w", err)
 	}
 
 	level := c.logLevel
@@ -127,18 +130,19 @@ func (c *rootCmd) initLogging() {
 		level = "debug"
 	}
 	initLogging(c.logFile, level, c.logFormat)
+	return nil
 }
 
 // loadConfig loads the configuration file.
 func (c *rootCmd) loadConfig() (Config, error) {
-	path := c.ConfigFile
+	path := expandPath(c.ConfigFile)
 	if path == "" {
 		configDir := xdgDir(xdgConfigHome)
 		path = filepath.Join(configDir, "config.yaml")
 	}
 
 	var cfg Config
-	if err := LoadConfigFile(c.ConfigFile, &cfg); err != nil {
+	if err := LoadConfigFile(path, &cfg); err != nil {
 		return Config{}, fmt.Errorf("load configuration: %w", err)
 	}
 
@@ -178,7 +182,7 @@ func xdgDir(kind xdgHomeKind) string {
 		case xdgStateHome:
 			return filepath.Join(path, ".local", "state", appName)
 		default:
-			return filepath.Join(path, strings.ToLower(string(kind)), appName)
+			return filepath.Join(path, "."+strings.ToLower(string(kind)), appName)
 		}
 	}
 
