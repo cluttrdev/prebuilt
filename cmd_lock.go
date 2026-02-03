@@ -62,9 +62,11 @@ func (c *lockCommand) Exec(ctx context.Context, args []string) (err error) {
 		return fmt.Errorf("load auth tokens: %w", err)
 	}
 
-	if err := c.resolver.Init(append(builtinProviderSpecs, cfg.Providers...), tokens); err != nil {
-		return fmt.Errorf("initialize providers: %w", err)
+	providers, err := InitProviders(append(builtinProviderSpecs, cfg.Providers...), tokens)
+	if err != nil {
+		return fmt.Errorf("init providers: %w", err)
 	}
+	c.resolver.Providers = providers
 
 	spinner, _ := pterm.DefaultSpinner.Start("Resolving binaries")
 	lock, err := c.resolver.Resolve(ctx, cfg.Binaries)

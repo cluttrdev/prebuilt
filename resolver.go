@@ -19,15 +19,6 @@ type Resolver struct {
 	Providers map[string]*Provider
 }
 
-func (r *Resolver) Init(ps []ProviderSpec, tokens map[string]string) error {
-	providers, err := InitProviders(ps, tokens)
-	if err != nil {
-		return fmt.Errorf("init providers: %w", err)
-	}
-	r.Providers = providers
-	return nil
-}
-
 func (r *Resolver) Client(name string) *http.Client {
 	if c, ok := r.Providers[name]; ok {
 		return c.Client
