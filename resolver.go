@@ -91,7 +91,7 @@ func (r *Resolver) Resolve(ctx context.Context, bins []BinarySpec) (Lock, error)
 func (r *Resolver) resolve(ctx context.Context, bin BinarySpec) (BinaryData, error) {
 	prov, data, err := r.resolveProvider(bin.Provider)
 	if err != nil {
-		return BinaryData{}, err
+		return BinaryData{}, fmt.Errorf("resolve provider: %w", err)
 	}
 
 	// Name
