@@ -183,3 +183,121 @@ func TestFindLatestVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveVersion(t *testing.T) {
+	tests := []struct {
+		testName      string
+		pages         [][]string // pages of versions; nil means no server needed
+		spec          string
+		prefix        string
+		want          string
+		wantErr       bool
+		wantCallCount *int // if non-nil, verify the number of API calls
+	}{
+		{
+			testName:      "early termination on first page match",
+			pages:         [][]string{{"v2.0.0", "v1.9.0"}, {"v1.8.0", "v1.7.0"}},
+			spec:          "^2.0.0",
+			prefix:        "v",
+			want:          "v2.0.0",
+			wantCallCount: ptr(1),
+		},
+		{
+			testName: "per-page semver sorting",
+			pages:    [][]string{{"v1.5.0", "v2.0.0", "v1.4.0"}}, // out of semver order
+			spec:     ">=1.0.0",
+			prefix:   "v",
+			want:     "v2.0.0", // highest semver, not first in list
+		},
+		{
+			testName:      "match on second page",
+			pages:         [][]string{{"v2.1.0", "v2.0.0"}, {"v1.5.0", "v1.0.0"}},
+			spec:          "^1.0.0",
+			prefix:        "v",
+			want:          "v1.5.0",
+			wantCallCount: ptr(2),
+		},
+		{
+			testName: "no matching version",
+			pages:    [][]string{{"v1.0.0", "v0.9.0"}},
+			spec:     "^2.0.0",
+			prefix:   "v",
+			wantErr:  true,
+		},
+		{
+			testName: "empty URL returns spec as-is",
+			pages:    nil, // no server needed
+			spec:     "v1.2.3",
+			prefix:   "v",
+			want:     "v1.2.3",
+		},
+		{
+			testName: "latest spec",
+			pages:    [][]string{{"v2.0.0", "v1.0.0"}},
+			spec:     "latest",
+			prefix:   "v",
+			want:     "v2.0.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.testName, func(t *testing.T) {
+			var url string
+			var client *http.Client
+			var callCount int
+
+			if tt.pages != nil {
+				mux, srv := setupServer(t)
+				client = srv.Client()
+				url = srv.URL + "/releases"
+
+				mux.HandleFunc("GET /releases", func(w http.ResponseWriter, r *http.Request) {
+					callCount++
+					page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+					if page == 0 {
+						page = 1
+					}
+
+					releases := make([]map[string]string, len(tt.pages[page-1]))
+					for i, v := range tt.pages[page-1] {
+						releases[i] = map[string]string{"tag_name": v}
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					if page < len(tt.pages) {
+						w.Header().Set("Link", fmt.Sprintf(`<%s/releases?page=%d>; rel="next"`, srv.URL, page+1))
+					}
+					_ = json.NewEncoder(w).Encode(releases)
+				})
+			} else {
+				client = http.DefaultClient
+				url = ""
+			}
+
+			got, gotErr := ResolveVersion(
+				context.Background(),
+				client,
+				url,
+				"$[*].tag_name",
+				tt.spec,
+				tt.prefix,
+			)
+
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Fatalf("ResolveVersion() failed: %v", gotErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("ResolveVersion() succeeded unexpectedly")
+			}
+			if got != tt.want {
+				t.Errorf("ResolveVersion() = %v, want %v", got, tt.want)
+			}
+			if tt.wantCallCount != nil && callCount != *tt.wantCallCount {
+				t.Errorf("expected %d API calls, got %d", *tt.wantCallCount, callCount)
+			}
+		})
+	}
+}

@@ -19,17 +19,86 @@ import (
 // retrieve a list of available versions.
 // The `spec` constraints are then used to determine the latest version.
 // If no url is given, the spec is returned as-is.
+//
+// This function implements lazy pagination with early termination: it fetches
+// pages one at a time and returns as soon as a matching version is found.
+// We assume APIs return versions/releases newest-first, this avoids fetching
+// all pages when the latest version matches the constraint.
 func ResolveVersion(ctx context.Context, client *http.Client, url string, path string, spec string, prefix string) (string, error) {
 	if url == "" {
 		return spec, nil
 	}
 
-	versions, err := GetVersions(ctx, client, url, path)
+	// Parse constraints once
+	constraintSpec := spec
+	if constraintSpec == "" || constraintSpec == "latest" {
+		constraintSpec = "*"
+	}
+	constraints, err := semver.NewConstraint(strings.TrimPrefix(constraintSpec, prefix))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse version constraints: %w", err)
 	}
 
-	return FindLatestVersion(versions, spec, prefix)
+	// Paginate and check each page with early termination
+	for {
+		resp, err := client.Get(url)
+		if err != nil {
+			return "", err
+		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return "", metaerr.WithMetadata(
+				fmt.Errorf("%d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+				"body", string(body),
+			)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("read response body: %w", err)
+		}
+
+		var src any
+		if err := json.Unmarshal(body, &src); err != nil {
+			return "", fmt.Errorf("unmarshal response body: %w", err)
+		}
+
+		rawVersions, err := retrieveVersions(src, path)
+		if err != nil {
+			return "", metaerr.WithMetadata(fmt.Errorf("retrieve versions: %w", err), "jsonpath", path)
+		}
+
+		// Parse and filter versions on this page
+		var pageVersions []*semver.Version
+		for _, raw := range rawVersions {
+			v, err := semver.NewVersion(strings.TrimPrefix(raw, prefix))
+			if err != nil {
+				continue
+			}
+			if constraints.Check(v) {
+				pageVersions = append(pageVersions, v)
+			}
+		}
+
+		// If we found matches on this page, return the highest one
+		if len(pageVersions) > 0 {
+			sort.Sort(sort.Reverse(semver.Collection(pageVersions)))
+			return prefix + pageVersions[0].Original(), nil
+		}
+
+		// No match on this page, try next
+		nextLink := findNextLink(resp.Header.Values("Link"))
+		if nextLink == "" {
+			break
+		}
+		url = nextLink
+	}
+
+	return "", fmt.Errorf("no matching versions: %v", spec)
 }
 
 // GetVersions queries the `url` and filters the response using the JSONPath
