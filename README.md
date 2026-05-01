@@ -1,3 +1,7 @@
+**Note:** This project has moved to [codeberg.org](https://codeberg.org/and2345/prebuilt)
+
+---
+
 # prebuilt
 
 A tool to manage installations of prebuilt binaries.
